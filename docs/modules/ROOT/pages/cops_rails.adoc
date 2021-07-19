@@ -214,6 +214,45 @@ are not used.
 [1, 2, 'a'].prepend('b')
 ----
 
+== Rails/AddColumnIndex
+
+|===
+| Enabled by default | Safe | Supports autocorrection | VersionAdded | VersionChanged
+
+| Pending
+| Yes
+| Yes
+| 2.11
+| -
+|===
+
+This cop checks for migrations using `add_column` that have an `index`
+key. `add_column` does not accept `index`, but also does not raise an
+error for extra keys, so it is possible to mistakenly add the key without
+realizing it will not actually add an index.
+
+=== Examples
+
+[source,ruby]
+----
+# bad (will not add an index)
+add_column :table, :column, :integer, index: true
+
+# good
+add_column :table, :column, :integer
+add_index :table, :column
+----
+
+=== Configurable attributes
+
+|===
+| Name | Default value | Configurable values
+
+| Include
+| `db/migrate/*.rb`
+| Array
+|===
+
 == Rails/AfterCommitOverride
 
 |===
@@ -590,13 +629,17 @@ end
 
 | Enabled
 | Yes
-| Yes
+| Yes (Unsafe)
 | 0.48
-| 0.67
+| 2.10
 |===
 
 This cop checks for code that can be written with simpler conditionals
 using `Object#blank?` defined by Active Support.
+
+This cop is marked as unsafe auto-correction, because `' '.empty?` returns false,
+but `' '.blank?` returns true. Therefore, auto-correction is not compatible
+if the receiver is a non-empty blank string, tab, or newline meta characters.
 
 Interaction with `Style/UnlessElse`:
 The configuration of `NotPresent` will not produce an offense in the
@@ -880,7 +923,7 @@ end
 | Yes
 | No
 | 0.30
-| 0.33
+| 2.11
 |===
 
 This cop checks for the correct use of Date methods,
@@ -892,13 +935,15 @@ Rails time zone. You must use `Time.zone.today` instead.
 The cop also reports warnings when you are using `to_time` method,
 because it doesn't know about Rails time zone either.
 
-Two styles are supported for this cop. When EnforcedStyle is 'strict'
+Two styles are supported for this cop. When `EnforcedStyle` is 'strict'
 then the Date methods `today`, `current`, `yesterday`, and `tomorrow`
 are prohibited and the usage of both `to_time`
 and 'to_time_in_current_zone' are reported as warning.
 
-When EnforcedStyle is 'flexible' then only `Date.today` is prohibited
-and only `to_time` is reported as warning.
+When `EnforcedStyle` is `flexible` then only `Date.today` is prohibited.
+
+And you can set a warning for `to_time` with `AllowToTime: false`.
+`AllowToTime` is `true` by default to prevent false positive on `DateTime` object.
 
 === Examples
 
@@ -910,7 +955,6 @@ and only `to_time` is reported as warning.
 Date.current
 Date.yesterday
 Date.today
-date.to_time
 
 # good
 Time.zone.today
@@ -923,7 +967,6 @@ Time.zone.today - 1.day
 ----
 # bad
 Date.today
-date.to_time
 
 # good
 Time.zone.today
@@ -931,6 +974,22 @@ Time.zone.today - 1.day
 Date.current
 Date.yesterday
 date.in_time_zone
+----
+
+==== AllowToTime: true (default)
+
+[source,ruby]
+----
+# good
+date.to_time
+----
+
+==== AllowToTime: false
+
+[source,ruby]
+----
+# bad
+date.to_time
 ----
 
 === Configurable attributes
@@ -941,6 +1000,10 @@ date.in_time_zone
 | EnforcedStyle
 | `flexible`
 | `strict`, `flexible`
+
+| AllowToTime
+| `true`
+| Boolean
 |===
 
 == Rails/DefaultScope
@@ -1099,10 +1162,10 @@ delegate :foo, to: :bar, allow_nil: true
 | Enabled by default | Safe | Supports autocorrection | VersionAdded | VersionChanged
 
 | Enabled
-| Yes
-| Yes
+| No
+| Yes (Unsafe)
 | 0.44
-| 2.6
+| 2.10
 |===
 
 This cop checks dynamic `find_by_*` methods.
@@ -1167,6 +1230,43 @@ Gem::Specification.find_by_name('backend').gem_dir
 === References
 
 * https://rails.rubystyle.guide#find_by
+
+== Rails/EagerEvaluationLogMessage
+
+|===
+| Enabled by default | Safe | Supports autocorrection | VersionAdded | VersionChanged
+
+| Pending
+| Yes
+| Yes
+| 2.11
+| -
+|===
+
+This cop checks that blocks are used for interpolated strings passed to
+`Rails.logger.debug`.
+
+By default, Rails production environments use the `:info` log level.
+At the `:info` log level, `Rails.logger.debug` statements do not result
+in log output. However, Ruby must eagerly evaluate interpolated string
+arguments passed as method arguments. Passing a block to
+`Rails.logger.debug` prevents costly evaluation of interpolated strings
+when no output would be produced anyway.
+
+=== Examples
+
+[source,ruby]
+----
+#bad
+Rails.logger.debug "The time is #{Time.zone.now}."
+
+#good
+Rails.logger.debug { "The time is #{Time.zone.now}." }
+----
+
+=== References
+
+* https://guides.rubyonrails.org/debugging_rails_applications.html#impact-of-logs-on-performance
 
 == Rails/EnumHash
 
@@ -1282,6 +1382,92 @@ Rails.env == :test
 Rails.env.production?
 ----
 
+== Rails/EnvironmentVariableAccess
+
+|===
+| Enabled by default | Safe | Supports autocorrection | VersionAdded | VersionChanged
+
+| Disabled
+| Yes
+| No
+| 2.10
+| 2.11
+|===
+
+This cop looks for direct access to environment variables through the
+`ENV` variable within the application code. This can lead to runtime
+errors due to misconfiguration that could have been discovered at boot
+time if the environment variables were loaded as part of initialization
+and copied into the application's configuration or secrets. The cop can
+be configured to allow either reads or writes if required.
+
+=== Examples
+
+[source,ruby]
+----
+# good
+Rails.application.config.foo
+Rails.application.config.x.foo.bar
+Rails.application.secrets.foo
+Rails.application.config.foo = "bar"
+----
+
+==== AllowReads: false (default)
+
+[source,ruby]
+----
+# bad
+ENV["FOO"]
+ENV.fetch("FOO")
+----
+
+==== AllowReads: true
+
+[source,ruby]
+----
+# good
+ENV["FOO"]
+ENV.fetch("FOO")
+----
+
+==== AllowWrites: false (default)
+
+[source,ruby]
+----
+# bad
+ENV["FOO"] = "bar"
+----
+
+==== AllowWrites: true
+
+[source,ruby]
+----
+# good
+ENV["FOO"] = "bar"
+----
+
+=== Configurable attributes
+
+|===
+| Name | Default value | Configurable values
+
+| Include
+| `app/**/*.rb`, `lib/**/*.rb`
+| Array
+
+| Exclude
+| `lib/**/*.rake`
+| Array
+
+| AllowReads
+| `false`
+| Boolean
+
+| AllowWrites
+| `false`
+| Boolean
+|===
+
 == Rails/Exit
 
 |===
@@ -1332,6 +1518,40 @@ raise 'a bad error has happened'
 | `lib/**/*.rake`
 | Array
 |===
+
+== Rails/ExpandedDateRange
+
+|===
+| Enabled by default | Safe | Supports autocorrection | VersionAdded | VersionChanged
+
+| Pending
+| Yes
+| Yes
+| 2.11
+| -
+|===
+
+This cop checks for expanded date range. It only compatible `..` range is targeted.
+Incompatible `...` range is ignored.
+
+=== Examples
+
+[source,ruby]
+----
+# bad
+date.beginning_of_day..date.end_of_day
+date.beginning_of_week..date.end_of_week
+date.beginning_of_month..date.end_of_month
+date.beginning_of_quarter..date.end_of_quarter
+date.beginning_of_year..date.end_of_year
+
+# good
+date.all_day
+date.all_week
+date.all_month
+date.all_quarter
+date.all_year
+----
 
 == Rails/FilePath
 
@@ -1396,28 +1616,51 @@ Rails.root.join('app/models/goober')
 | Yes
 | Yes
 | 0.30
-| -
+| 2.11
 |===
 
-This cop is used to identify usages of `where.first` and
-change them to use `find_by` instead.
+This cop is used to identify usages of `where.take` and change them to use `find_by` instead.
+
+And `where(...).first` can return different results from `find_by`.
+(They order records differently, so the "first" record can be different.)
+
+If you also want to detect `where.first`, you can set `IgnoreWhereFirst` to false.
 
 === Examples
 
 [source,ruby]
 ----
 # bad
-User.where(name: 'Bruce').first
 User.where(name: 'Bruce').take
 
 # good
 User.find_by(name: 'Bruce')
 ----
 
+==== IgnoreWhereFirst: true (default)
+
+[source,ruby]
+----
+# good
+User.where(name: 'Bruce').first
+----
+
+==== IgnoreWhereFirst: false
+
+[source,ruby]
+----
+# bad
+User.where(name: 'Bruce').first
+----
+
 === Configurable attributes
 
 |===
 | Name | Default value | Configurable values
+
+| IgnoreWhereFirst
+| `true`
+| Boolean
 
 | Include
 | `app/models/**/*.rb`
@@ -1566,7 +1809,9 @@ This cop checks for the use of the has_and_belongs_to_many macro.
 
 This cop looks for `has_many` or `has_one` associations that don't
 specify a `:dependent` option.
-It doesn't register an offense if `:through` option was specified.
+
+It doesn't register an offense if `:through` or `dependent: nil`
+is specified, or if the model is read-only.
 
 === Examples
 
@@ -1582,7 +1827,17 @@ end
 class User < ActiveRecord::Base
   has_many :comments, dependent: :restrict_with_exception
   has_one :avatar, dependent: :destroy
+  has_many :articles, dependent: nil
   has_many :patients, through: :appointments
+end
+
+class User < ActiveRecord::Base
+  has_many :comments
+  has_one :avatar
+
+  def readonly?
+    true
+  end
 end
 ----
 
@@ -1705,7 +1960,7 @@ get :new, **options
 | Yes
 | Yes
 | 0.54
-| -
+| 2.11
 |===
 
 Enforces use of symbolic or numeric value to define HTTP status.
@@ -1721,12 +1976,14 @@ render :foo, status: 200
 render json: { foo: 'bar' }, status: 200
 render plain: 'foo/bar', status: 304
 redirect_to root_url, status: 301
+head 200
 
 # good
 render :foo, status: :ok
 render json: { foo: 'bar' }, status: :ok
 render plain: 'foo/bar', status: :not_modified
 redirect_to root_url, status: :moved_permanently
+head :ok
 ----
 
 ==== EnforcedStyle: numeric
@@ -1738,12 +1995,14 @@ render :foo, status: :ok
 render json: { foo: 'bar' }, status: :not_found
 render plain: 'foo/bar', status: :not_modified
 redirect_to root_url, status: :moved_permanently
+head :ok
 
 # good
 render :foo, status: 200
 render json: { foo: 'bar' }, status: 404
 render plain: 'foo/bar', status: 304
 redirect_to root_url, status: 301
+head 200
 ----
 
 === Configurable attributes
@@ -1754,6 +2013,47 @@ redirect_to root_url, status: 301
 | EnforcedStyle
 | `symbolic`
 | `numeric`, `symbolic`
+|===
+
+== Rails/I18nLocaleAssignment
+
+|===
+| Enabled by default | Safe | Supports autocorrection | VersionAdded | VersionChanged
+
+| Pending
+| Yes
+| No
+| 2.11
+| -
+|===
+
+This cop checks for the use of `I18n.locale=` method.
+
+The `locale` attribute persists for the rest of the Ruby runtime, potentially causing
+unexpected behavior at a later time.
+Using `I18n.with_locale` ensures the code passed in the block is the only place `I18n.locale` is affected.
+It eliminates the possibility of a `locale` sticking around longer than intended.
+
+=== Examples
+
+[source,ruby]
+----
+# bad
+I18n.locale = :fr
+
+# good
+I18n.with_locale(:fr) do
+end
+----
+
+=== Configurable attributes
+
+|===
+| Name | Default value | Configurable values
+
+| Include
+| `spec/**/*.rb`, `test/**/*.rb`
+| Array
 |===
 
 == Rails/IgnoredSkipActionFilterOption
@@ -3158,14 +3458,16 @@ end
 | Enabled by default | Safe | Supports autocorrection | VersionAdded | VersionChanged
 
 | Enabled
-| Yes
+| No
 | No
 | 0.64
-| -
+| 2.10
 |===
 
 This cop checks if the value of the option `class_name`, in
 the definition of a reflection is a string.
+It is marked as unsafe because it cannot be determined whether
+constant or method return value specified to `class_name` is a string.
 
 === Examples
 
@@ -3439,6 +3741,41 @@ request.referrer
 | `referer`, `referrer`
 |===
 
+== Rails/RequireDependency
+
+|===
+| Enabled by default | Safe | Supports autocorrection | VersionAdded | VersionChanged
+
+| Disabled
+| Yes
+| No
+| 2.10
+| -
+|===
+
+This cop checks for the usage of `require_dependency`.
+
+`require_dependency` is an obsolete method for Rails applications running in Zeitwerk mode.
+In Zeitwerk mode, the semantics should match Ruby's and no need to be defensive with load order,
+just refer to classes and modules normally.
+If the constant name is dynamic, camelize if needed, and constantize.
+
+Applications running in Zeitwerk mode should not use `require_dependency`.
+
+NOTE: This cop is disabled by default. Please enable it if you are using Zeitwerk mode.
+
+=== Examples
+
+[source,ruby]
+----
+# bad
+require_dependency 'some_lib'
+----
+
+=== References
+
+* https://guides.rubyonrails.org/autoloading_and_reloading_constants.html
+
 == Rails/ReversibleMigration
 
 |===
@@ -3654,6 +3991,72 @@ end
 
 * https://rails.rubystyle.guide#reversible-migration
 * https://api.rubyonrails.org/classes/ActiveRecord/Migration/CommandRecorder.html
+
+== Rails/ReversibleMigrationMethodDefinition
+
+|===
+| Enabled by default | Safe | Supports autocorrection | VersionAdded | VersionChanged
+
+| Disabled
+| Yes
+| No
+| 2.10
+| -
+|===
+
+This cop checks whether the migration implements
+either a `change` method or both an `up` and a `down`
+method.
+
+=== Examples
+
+[source,ruby]
+----
+# bad
+class SomeMigration < ActiveRecord::Migration[6.0]
+  def up
+    # up migration
+  end
+
+  # <----- missing down method
+end
+
+class SomeMigration < ActiveRecord::Migration[6.0]
+  # <----- missing up method
+
+  def down
+    # down migration
+  end
+end
+
+# good
+class SomeMigration < ActiveRecord::Migration[6.0]
+  def change
+    # reversible migration
+  end
+end
+
+# good
+class SomeMigration < ActiveRecord::Migration[6.0]
+  def up
+    # up migration
+  end
+
+  def down
+    # down migration
+  end
+end
+----
+
+=== Configurable attributes
+
+|===
+| Name | Default value | Configurable values
+
+| Include
+| `db/migrate/*.rb`
+| Array
+|===
 
 == Rails/SafeNavigation
 
@@ -4133,7 +4536,7 @@ SQL
 | No
 | Yes (Unsafe)
 | 0.30
-| 0.68
+| 2.10
 |===
 
 This cop checks for the use of Time methods without zone.
@@ -4141,13 +4544,26 @@ This cop checks for the use of Time methods without zone.
 Built on top of Ruby on Rails style guide (https://rails.rubystyle.guide#time)
 and the article http://danilenko.org/2012/7/6/rails_timezones/
 
-Two styles are supported for this cop. When EnforcedStyle is 'strict'
-then only use of Time.zone is allowed.
+Two styles are supported for this cop. When `EnforcedStyle` is 'strict'
+then only use of `Time.zone` is allowed.
 
 When EnforcedStyle is 'flexible' then it's also allowed
-to use Time.in_time_zone.
+to use `Time#in_time_zone`.
 
 === Examples
+
+[source,ruby]
+----
+# bad
+Time.now
+Time.parse('2015-03-02T19:05:37')
+
+# good
+Time.current
+Time.zone.now
+Time.zone.parse('2015-03-02T19:05:37')
+Time.zone.parse('2015-03-02T19:05:37Z') # Respect ISO 8601 format with timezone specifier.
+----
 
 ==== EnforcedStyle: strict
 
@@ -4156,16 +4572,7 @@ to use Time.in_time_zone.
 # `strict` means that `Time` should be used with `zone`.
 
 # bad
-Time.now
-Time.parse('2015-03-02 19:05:37')
-
-# bad
-Time.current
 Time.at(timestamp).in_time_zone
-
-# good
-Time.zone.now
-Time.zone.parse('2015-03-02 19:05:37')
 ----
 
 ==== EnforcedStyle: flexible (default)
@@ -4174,16 +4581,7 @@ Time.zone.parse('2015-03-02 19:05:37')
 ----
 # `flexible` allows usage of `in_time_zone` instead of `zone`.
 
-# bad
-Time.now
-Time.parse('2015-03-02 19:05:37')
-
 # good
-Time.zone.now
-Time.zone.parse('2015-03-02 19:05:37')
-
-# good
-Time.current
 Time.at(timestamp).in_time_zone
 ----
 
@@ -4195,12 +4593,61 @@ Time.at(timestamp).in_time_zone
 | EnforcedStyle
 | `flexible`
 | `strict`, `flexible`
+
+| Exclude
+| `**/*.gemspec`
+| Array
 |===
 
 === References
 
 * https://rails.rubystyle.guide#time
 * http://danilenko.org/2012/7/6/rails_timezones
+
+== Rails/TimeZoneAssignment
+
+|===
+| Enabled by default | Safe | Supports autocorrection | VersionAdded | VersionChanged
+
+| Pending
+| Yes
+| No
+| 2.10
+| -
+|===
+
+This cop checks for the use of `Time.zone=` method.
+
+The `zone` attribute persists for the rest of the Ruby runtime, potentially causing
+unexpected behavior at a later time.
+Using `Time.use_zone` ensures the code passed in the block is the only place Time.zone is affected.
+It eliminates the possibility of a `zone` sticking around longer than intended.
+
+=== Examples
+
+[source,ruby]
+----
+# bad
+Time.zone = 'EST'
+
+# good
+Time.use_zone('EST') do
+end
+----
+
+=== Configurable attributes
+
+|===
+| Name | Default value | Configurable values
+
+| Include
+| `spec/**/*.rb`, `test/**/*.rb`
+| Array
+|===
+
+=== References
+
+* https://thoughtbot.com/blog/its-about-time-zones
 
 == Rails/UniqBeforePluck
 
@@ -4368,6 +4815,47 @@ Rails.env == 'production'
 | Array
 |===
 
+== Rails/UnusedIgnoredColumns
+
+|===
+| Enabled by default | Safe | Supports autocorrection | VersionAdded | VersionChanged
+
+| Pending
+| Yes
+| No
+| 2.11
+| -
+|===
+
+This cop suggests you remove a column that does not exist in the schema from `ignored_columns`.
+`ignored_columns` is necessary to drop a column from RDBMS, but you don't need it after the migration
+to drop the column. You avoid forgetting to remove `ignored_columns` by this cop.
+
+=== Examples
+
+[source,ruby]
+----
+# bad
+class User < ApplicationRecord
+  self.ignored_columns = [:already_removed_column]
+end
+
+# good
+class User < ApplicationRecord
+  self.ignored_columns = [:still_existing_column]
+end
+----
+
+=== Configurable attributes
+
+|===
+| Name | Default value | Configurable values
+
+| Include
+| `app/models/**/*.rb`
+| Array
+|===
+
 == Rails/Validation
 
 |===
@@ -4430,9 +4918,9 @@ validates :foo, uniqueness: true
 
 | Pending
 | Yes
-| Yes
+| Yes (Unsafe)
 | 2.9
-| -
+| 2.10
 |===
 
 This cop identifies places where manually constructed SQL
@@ -4468,9 +4956,9 @@ User.where(users: { name: 'Gabe' })
 
 | Pending
 | Yes
-| Yes
+| Yes (Unsafe)
 | 2.7
-| 2.8
+| 2.10
 |===
 
 This cop enforces consistent style when using `exists?`.
@@ -4480,6 +4968,17 @@ then the cop enforces `exists?(...)` over `where(...).exists?`.
 
 When EnforcedStyle is 'where' then the cop enforces
 `where(...).exists?` over `exists?(...)`.
+
+This cop is unsafe for auto-correction because the behavior may change on the following case:
+
+[source,ruby]
+----
+Author.includes(:articles).where(articles: {id: id}).exists?
+#=> Perform `eager_load` behavior (`LEFT JOIN` query) and get result.
+
+Author.includes(:articles).exists?(articles: {id: id})
+#=> Perform `preload` behavior and `ActiveRecord::StatementInvalid` error occurs.
+----
 
 === Examples
 

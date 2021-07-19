@@ -8,6 +8,13 @@ module RuboCop
 
       WHERE_METHODS = %i[where rewhere].freeze
 
+      def_node_matcher :active_record?, <<~PATTERN
+        {
+          (const nil? :ApplicationRecord)
+          (const (const nil? :ActiveRecord) :Base)
+        }
+      PATTERN
+
       def_node_search :find_set_table_name, <<~PATTERN
         (send self :table_name= {str sym})
       PATTERN
@@ -15,6 +22,10 @@ module RuboCop
       def_node_search :find_belongs_to, <<~PATTERN
         (send nil? :belongs_to {str sym} ...)
       PATTERN
+
+      def inherit_active_record_base?(node)
+        node.each_ancestor(:class).any? { |class_node| active_record?(class_node.parent_class) }
+      end
 
       def external_dependency_checksum
         return @external_dependency_checksum if defined?(@external_dependency_checksum)
@@ -46,12 +57,13 @@ module RuboCop
       # Resolve relation into column name.
       # It just returns column_name if the column exists.
       # Or it tries to resolve column_name as a relation.
+      # Returns an array of column names if the relation is polymorphic.
       # It returns `nil` if it can't resolve.
       #
       # @param name [String]
       # @param class_node [RuboCop::AST::Node]
       # @param table [RuboCop::Rails::SchemaLoader::Table]
-      # @return [String, nil]
+      # @return [Array, String, nil]
       def resolve_relation_into_column(name:, class_node:, table:)
         return unless table
         return name if table.with_column?(name: name)
@@ -60,7 +72,9 @@ module RuboCop
           next unless belongs_to.first_argument.value.to_s == name
 
           fk = foreign_key_of(belongs_to) || "#{name}_id"
-          return fk if table.with_column?(name: fk)
+          next unless table.with_column?(name: fk)
+
+          return polymorphic?(belongs_to) ? [fk, "#{name}_type"] : fk
         end
         nil
       end
@@ -74,6 +88,15 @@ module RuboCop
           next unless pair.value.sym_type? || pair.value.str_type?
 
           break pair.value.value.to_s
+        end
+      end
+
+      def polymorphic?(belongs_to)
+        options = belongs_to.last_argument
+        return false unless options.hash_type?
+
+        options.each_pair.any? do |pair|
+          pair.key.sym_type? && pair.key.value == :polymorphic && pair.value.true_type?
         end
       end
 

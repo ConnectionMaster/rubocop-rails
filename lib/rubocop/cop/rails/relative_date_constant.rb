@@ -31,11 +31,12 @@ module RuboCop
         include RangeHelp
         extend AutoCorrector
 
-        MSG = 'Do not assign %<method_name>s to constants as it ' \
+        MSG = 'Do not assign `%<method_name>s` to constants as it ' \
               'will be evaluated only once.'
+        RELATIVE_DATE_METHODS = %i[since from_now after ago until before yesterday tomorrow].to_set.freeze
 
         def on_casgn(node)
-          relative_date_assignment?(node) do |method_name|
+          nested_relative_date(node) do |method_name|
             add_offense(node, message: message(method_name)) do |corrector|
               autocorrect(corrector, node)
             end
@@ -50,7 +51,7 @@ module RuboCop
           lhs.children.zip(rhs.children).each do |(name, value)|
             next unless name.casgn_type?
 
-            relative_date?(value) do |method_name|
+            nested_relative_date(value) do |method_name|
               add_offense(offense_range(name, value), message: message(method_name)) do |corrector|
                 autocorrect(corrector, node)
               end
@@ -59,7 +60,7 @@ module RuboCop
         end
 
         def on_or_asgn(node)
-          relative_date_or_assignment?(node) do |method_name|
+          relative_date_or_assignment(node) do |method_name|
             add_offense(node, message: format(MSG, method_name: method_name))
           end
         end
@@ -88,24 +89,22 @@ module RuboCop
           range_between(name.loc.expression.begin_pos, value.loc.expression.end_pos)
         end
 
-        def_node_matcher :relative_date_assignment?, <<~PATTERN
-          {
-            (casgn _ _ (send _ ${:since :from_now :after :ago :until :before}))
-            (casgn _ _ ({erange irange} _ (send _ ${:since :from_now :after :ago :until :before})))
-            (casgn _ _ ({erange irange} (send _ ${:since :from_now :after :ago :until :before}) _))
-          }
+        def nested_relative_date(node, &callback)
+          return if node.block_type?
+
+          node.each_child_node do |child|
+            nested_relative_date(child, &callback)
+          end
+
+          relative_date(node, &callback)
+        end
+
+        def_node_matcher :relative_date_or_assignment, <<~PATTERN
+          (:or_asgn (casgn _ _) (send _ $RELATIVE_DATE_METHODS))
         PATTERN
 
-        def_node_matcher :relative_date_or_assignment?, <<~PATTERN
-          (:or_asgn (casgn _ _) (send _ ${:since :from_now :after :ago :until :before}))
-        PATTERN
-
-        def_node_matcher :relative_date?, <<~PATTERN
-          {
-            ({erange irange} _ (send _ ${:since :from_now :after :ago :until :before}))
-            ({erange irange} (send _ ${:since :from_now :after :ago :until :before}) _)
-            (send _ ${:since :from_now :after :ago :until :before})
-          }
+        def_node_matcher :relative_date, <<~PATTERN
+          (send _ $RELATIVE_DATE_METHODS)
         PATTERN
       end
     end

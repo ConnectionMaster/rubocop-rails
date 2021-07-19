@@ -8,40 +8,33 @@ module RuboCop
       # Built on top of Ruby on Rails style guide (https://rails.rubystyle.guide#time)
       # and the article http://danilenko.org/2012/7/6/rails_timezones/
       #
-      # Two styles are supported for this cop. When EnforcedStyle is 'strict'
-      # then only use of Time.zone is allowed.
+      # Two styles are supported for this cop. When `EnforcedStyle` is 'strict'
+      # then only use of `Time.zone` is allowed.
       #
       # When EnforcedStyle is 'flexible' then it's also allowed
-      # to use Time.in_time_zone.
+      # to use `Time#in_time_zone`.
+      #
+      # @example
+      #   # bad
+      #   Time.now
+      #   Time.parse('2015-03-02T19:05:37')
+      #
+      #   # good
+      #   Time.current
+      #   Time.zone.now
+      #   Time.zone.parse('2015-03-02T19:05:37')
+      #   Time.zone.parse('2015-03-02T19:05:37Z') # Respect ISO 8601 format with timezone specifier.
       #
       # @example EnforcedStyle: strict
       #   # `strict` means that `Time` should be used with `zone`.
       #
       #   # bad
-      #   Time.now
-      #   Time.parse('2015-03-02 19:05:37')
-      #
-      #   # bad
-      #   Time.current
       #   Time.at(timestamp).in_time_zone
-      #
-      #   # good
-      #   Time.zone.now
-      #   Time.zone.parse('2015-03-02 19:05:37')
       #
       # @example EnforcedStyle: flexible (default)
       #   # `flexible` allows usage of `in_time_zone` instead of `zone`.
       #
-      #   # bad
-      #   Time.now
-      #   Time.parse('2015-03-02 19:05:37')
-      #
       #   # good
-      #   Time.zone.now
-      #   Time.zone.parse('2015-03-02 19:05:37')
-      #
-      #   # good
-      #   Time.current
       #   Time.at(timestamp).in_time_zone
       class TimeZone < Base
         include ConfigurableEnforcedStyle
@@ -58,10 +51,12 @@ module RuboCop
 
         GOOD_METHODS = %i[zone zone_default find_zone find_zone!].freeze
 
-        DANGEROUS_METHODS = %i[now local new parse at current].freeze
+        DANGEROUS_METHODS = %i[now local new parse at].freeze
 
         ACCEPTED_METHODS = %i[in_time_zone utc getlocal xmlschema iso8601
                               jisx0301 rfc3339 httpdate to_i to_f].freeze
+
+        TIMEZONE_SPECIFIER = /[A-z]/.freeze
 
         def on_const(node)
           mod, klass = *node
@@ -116,9 +111,10 @@ module RuboCop
         end
 
         def check_time_node(klass, node)
+          return if attach_timezone_specifier?(node.first_argument)
+
           chain = extract_method_chain(node)
           return if not_danger_chain?(chain)
-
           return check_localtime(node) if need_check_localtime?(chain)
 
           method_name = (chain & DANGEROUS_METHODS).join('.')
@@ -130,6 +126,10 @@ module RuboCop
           add_offense(node.loc.selector, message: message) do |corrector|
             autocorrect(corrector, node)
           end
+        end
+
+        def attach_timezone_specifier?(date)
+          date.respond_to?(:value) && TIMEZONE_SPECIFIER.match?(date.value.to_s[-1])
         end
 
         def build_message(klass, method_name, node)

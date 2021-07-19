@@ -5,7 +5,9 @@ module RuboCop
     module Rails
       # This cop looks for `has_many` or `has_one` associations that don't
       # specify a `:dependent` option.
-      # It doesn't register an offense if `:through` option was specified.
+      #
+      # It doesn't register an offense if `:through` or `dependent: nil`
+      # is specified, or if the model is read-only.
       #
       # @example
       #   # bad
@@ -18,7 +20,17 @@ module RuboCop
       #   class User < ActiveRecord::Base
       #     has_many :comments, dependent: :restrict_with_exception
       #     has_one :avatar, dependent: :destroy
+      #     has_many :articles, dependent: nil
       #     has_many :patients, through: :appointments
+      #   end
+      #
+      #   class User < ActiveRecord::Base
+      #     has_many :comments
+      #     has_one :avatar
+      #
+      #     def readonly?
+      #       true
+      #     end
       #   end
       class HasManyOrHasOneDependent < Base
         MSG = 'Specify a `:dependent` option.'
@@ -37,7 +49,7 @@ module RuboCop
         PATTERN
 
         def_node_matcher :dependent_option?, <<~PATTERN
-          (pair (sym :dependent) !nil)
+          (pair (sym :dependent) {!nil (nil)})
         PATTERN
 
         def_node_matcher :present_option?, <<~PATTERN
@@ -57,8 +69,14 @@ module RuboCop
             (args) ...)
         PATTERN
 
+        def_node_matcher :readonly?, <<~PATTERN
+          (def :readonly?
+            (args)
+            (true))
+        PATTERN
+
         def on_send(node)
-          return if active_resource?(node.parent)
+          return if active_resource?(node.parent) || readonly_model?(node)
           return if !association_without_options?(node) && valid_options?(association_with_options?(node))
           return if valid_options_in_with_options_block?(node)
 
@@ -66,6 +84,12 @@ module RuboCop
         end
 
         private
+
+        def readonly_model?(node)
+          return false unless (parent = node.parent)
+
+          parent.each_descendant(:def).any? { |def_node| readonly?(def_node) }
+        end
 
         def valid_options_in_with_options_block?(node)
           return true unless node.parent

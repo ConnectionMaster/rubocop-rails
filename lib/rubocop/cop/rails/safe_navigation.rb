@@ -44,8 +44,21 @@ module RuboCop
         RESTRICT_ON_SEND = %i[try try!].freeze
 
         def_node_matcher :try_call, <<~PATTERN
-          (send !nil? ${:try :try!} $_ ...)
+          (send _ ${:try :try!} $_ ...)
         PATTERN
+
+        # Monkey patching for `Style/RedundantSelf` of RuboCop core.
+        # rubocop:disable Style/ClassAndModuleChildren
+        class Style::RedundantSelf
+          def self.autocorrect_incompatible_with
+            [Rails::SafeNavigation]
+          end
+        end
+        # rubocop:enable Style/ClassAndModuleChildren
+
+        def self.autocorrect_incompatible_with
+          [Style::RedundantSelf]
+        end
 
         def on_send(node)
           try_call(node) do |try_method, dispatch|
@@ -64,7 +77,12 @@ module RuboCop
           method_node, *params = *node.arguments
           method = method_node.source[1..-1]
 
-          range = range_between(node.loc.dot.begin_pos, node.loc.expression.end_pos)
+          range = if node.receiver
+                    range_between(node.loc.dot.begin_pos, node.loc.expression.end_pos)
+                  else
+                    corrector.insert_before(node, 'self')
+                    node
+                  end
 
           corrector.replace(range, replacement(method, params))
         end

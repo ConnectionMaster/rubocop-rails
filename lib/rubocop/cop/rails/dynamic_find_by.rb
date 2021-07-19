@@ -32,18 +32,20 @@ module RuboCop
       #   # good
       #   Gem::Specification.find_by_name('backend').gem_dir
       class DynamicFindBy < Base
+        include ActiveRecordHelper
         extend AutoCorrector
 
         MSG = 'Use `%<static_name>s` instead of dynamic `%<method>s`.'
         METHOD_PATTERN = /^find_by_(.+?)(!)?$/.freeze
+        IGNORED_ARGUMENT_TYPES = %i[hash splat].freeze
 
         def on_send(node)
-          return if allowed_invocation?(node)
+          return if node.receiver.nil? && !inherit_active_record_base?(node) || allowed_invocation?(node)
 
           method_name = node.method_name
           static_name = static_method_name(method_name)
           return unless static_name
-          return if node.arguments.any?(&:splat_type?)
+          return if node.arguments.any? { |argument| IGNORED_ARGUMENT_TYPES.include?(argument.type) }
 
           message = format(MSG, static_name: static_name, method: method_name)
           add_offense(node, message: message) do |corrector|

@@ -11,13 +11,6 @@ RSpec.describe RuboCop::Cop::Rails::TimeZone, :config do
       RUBY
     end
 
-    it 'registers an offense for Time.current' do
-      expect_offense(<<~RUBY)
-        Time.current
-             ^^^^^^^ Do not use `Time.current` without zone. Use `Time.zone.now` instead.
-      RUBY
-    end
-
     it 'registers an offense for Time.new without argument' do
       expect_offense(<<~RUBY)
         Time.new
@@ -40,8 +33,7 @@ RSpec.describe RuboCop::Cop::Rails::TimeZone, :config do
       RUBY
     end
 
-    it 'does not register an offense when a .new method is called
-        independently of the Time class' do
+    it 'does not register an offense when a .new method is called independently of the Time class' do
       expect_no_offenses(<<~RUBY)
         Range.new(1, Time.class.to_s)
       RUBY
@@ -104,25 +96,30 @@ RSpec.describe RuboCop::Cop::Rails::TimeZone, :config do
           RUBY
         end
       end
-
-      describe '.current' do
-        it 'corrects the error' do
-          expect_offense(<<~RUBY)
-            Time.current
-                 ^^^^^^^ Do not use `Time.current` without zone. Use `Time.zone.now` instead.
-          RUBY
-
-          expect_correction(<<~RUBY)
-            Time.zone.now
-          RUBY
-        end
-      end
     end
 
     it 'registers an offense for Time.parse' do
       expect_offense(<<~RUBY)
         Time.parse("2012-03-02 16:05:37")
              ^^^^^ Do not use `Time.parse` without zone. Use `Time.zone.parse` instead.
+      RUBY
+    end
+
+    it 'does not register an offense when attaching timezone specifier `Z`' do
+      expect_no_offenses(<<~RUBY)
+        Time.parse("2012-03-02T16:05:37Z")
+      RUBY
+    end
+
+    it 'does not register an offense when attaching timezone specifier `z`' do
+      expect_no_offenses(<<~RUBY)
+        Time.parse("2012-03-02T16:05:37z")
+      RUBY
+    end
+
+    it 'does not register an offense when attaching timezone specifier `E`' do
+      expect_no_offenses(<<~RUBY)
+        Time.parse("2012-03-02T16:05:37E")
       RUBY
     end
 
@@ -158,6 +155,12 @@ RSpec.describe RuboCop::Cop::Rails::TimeZone, :config do
       expect_offense(<<~RUBY)
         return Foo, Time.parse("2012-03-02 16:05:37")
                          ^^^^^ Do not use `Time.parse` without zone. Use `Time.zone.parse` instead.
+      RUBY
+    end
+
+    it 'accepts Time.current' do
+      expect_no_offenses(<<~RUBY)
+        Time.current
       RUBY
     end
 

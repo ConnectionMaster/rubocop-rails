@@ -138,10 +138,62 @@ RSpec.describe RuboCop::Cop::Rails::DynamicFindBy, :config do
     expect_no_offenses('User.find_by_foo_and_bar(arg, *args)')
   end
 
+  it 'accepts dynamic finder with single hash argument' do
+    expect_no_offenses('Post.find_by_id(limit: 1)')
+  end
+
+  it 'accepts dynamic finder with multiple arguments including hash' do
+    expect_no_offenses('Post.find_by_title_and_id("foo", limit: 1)')
+  end
+
   it 'accepts method in whitelist' do
     expect_no_offenses(<<~RUBY)
       User.find_by_sql(["select * from users where name = ?", name])
     RUBY
+  end
+
+  context 'with no receiver' do
+    it 'does not register an offense when not inheriting any class' do
+      expect_no_offenses(<<~RUBY)
+        class C
+          def do_something
+            find_by_name(name)
+          end
+        end
+      RUBY
+    end
+
+    it 'does not register an offense when not inheriting `ApplicationRecord`' do
+      expect_no_offenses(<<~RUBY)
+        class C < Foo
+          def do_something
+            find_by_name(name)
+          end
+        end
+      RUBY
+    end
+
+    it 'registers an offense when inheriting `ApplicationRecord`' do
+      expect_offense(<<~RUBY)
+        class C < ApplicationRecord
+          def do_something
+            find_by_name(name)
+            ^^^^^^^^^^^^^^^^^^ Use `find_by` instead of dynamic `find_by_name`.
+          end
+        end
+      RUBY
+    end
+
+    it 'registers an offense when inheriting `ActiveRecord::Base`' do
+      expect_offense(<<~RUBY)
+        class C < ActiveRecord::Base
+          def do_something
+            find_by_name(name)
+            ^^^^^^^^^^^^^^^^^^ Use `find_by` instead of dynamic `find_by_name`.
+          end
+        end
+      RUBY
+    end
   end
 
   context 'with allowed receiver name' do

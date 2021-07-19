@@ -18,8 +18,7 @@ RSpec.describe RuboCop::Cop::Rails::FindEach, :config do
     end
 
     it "does not register an offense when using #{scope}.select(...).each" do
-      expect_no_offenses("User.#{scope}.select(:name, :age).each " \
-                          '{ |u| u.something }')
+      expect_no_offenses("User.#{scope}.select(:name, :age).each { |u| u.something }")
     end
   end
 
@@ -63,6 +62,42 @@ RSpec.describe RuboCop::Cop::Rails::FindEach, :config do
     expect_correction(<<~RUBY)
       class C; User.all.find_each { |u| u.x }; end
     RUBY
+  end
+
+  context 'with no receiver' do
+    it 'does not register an offense when not inheriting any class' do
+      expect_no_offenses(<<~RUBY)
+        class C
+          all.each { |u| u.x }
+        end
+      RUBY
+    end
+
+    it 'does not register an offense when not inheriting `ApplicationRecord`' do
+      expect_no_offenses(<<~RUBY)
+        class C < Foo
+          all.each { |u| u.x }
+        end
+      RUBY
+    end
+
+    it 'registers an offense when inheriting `ApplicationRecord`' do
+      expect_offense(<<~RUBY)
+        class C < ApplicationRecord
+          all.each { |u| u.x }
+              ^^^^ Use `find_each` instead of `each`.
+        end
+      RUBY
+    end
+
+    it 'registers an offense when inheriting `ActiveRecord::Base`' do
+      expect_offense(<<~RUBY)
+        class C < ActiveRecord::Base
+          all.each { |u| u.x }
+              ^^^^ Use `find_each` instead of `each`.
+        end
+      RUBY
+    end
   end
 
   context 'ignored methods' do

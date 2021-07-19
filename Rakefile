@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+task release: 'changelog:check_clean' # Before task is required
+
 require 'bundler'
 require 'bundler/gem_tasks'
 
@@ -16,8 +18,13 @@ end
 require 'rubocop/rake_task'
 require 'rspec/core/rake_task'
 
-RSpec::Core::RakeTask.new(:spec) do |spec|
-  spec.pattern = FileList['spec/**/*_spec.rb']
+desc 'Run RSpec'
+task :spec do
+  if Process.respond_to?(:fork)
+    sh('rspec-queue spec')
+  else
+    sh('rspec spec')
+  end
 end
 
 desc 'Run RSpec with code coverage'
@@ -68,5 +75,5 @@ end
 def bump_minor_version
   major, minor, _patch = RuboCop::Rails::Version::STRING.split('.')
 
-  "#{major}.#{minor.succ}.0"
+  "#{major}.#{minor.succ}"
 end

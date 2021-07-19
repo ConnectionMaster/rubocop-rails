@@ -28,18 +28,33 @@ module RuboCop
         MSG = 'Use `tag` instead of `content_tag`.'
         RESTRICT_ON_SEND = %i[content_tag].freeze
 
+        def on_new_investigation
+          @corrected_nodes = nil
+        end
+
         def on_send(node)
           first_argument = node.first_argument
-          return unless first_argument
-
-          return if first_argument.variable? || first_argument.send_type? || first_argument.const_type?
+          return if !first_argument ||
+                    allowed_argument?(first_argument) ||
+                    corrected_ancestor?(node)
 
           add_offense(node) do |corrector|
             autocorrect(corrector, node)
+
+            @corrected_nodes ||= Set.new.compare_by_identity
+            @corrected_nodes.add(node)
           end
         end
 
         private
+
+        def corrected_ancestor?(node)
+          node.each_ancestor(:send).any? { |ancestor| @corrected_nodes&.include?(ancestor) }
+        end
+
+        def allowed_argument?(argument)
+          argument.variable? || argument.send_type? || argument.const_type? || argument.splat_type?
+        end
 
         def autocorrect(corrector, node)
           if method_name?(node.first_argument)
