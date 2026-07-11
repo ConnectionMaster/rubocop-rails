@@ -9,6 +9,8 @@
 
 ## master (unreleased)
 
+## 2.36.0 (2026-07-11)
+
 ### Bug fixes
 
 * [#1647](https://github.com/rubocop/rubocop-rails/pull/1647): Fix a false negative for `Rails/EagerEvaluationLogMessage` when the interpolated string is passed to `Rails.logger.debug` as the sole body of an enclosing block such as `each` or `tap`. ([@conwayje][])
