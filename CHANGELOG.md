@@ -9,6 +9,18 @@
 
 ## master (unreleased)
 
+### Bug fixes
+
+* [#1647](https://github.com/rubocop/rubocop-rails/pull/1647): Fix a false negative for `Rails/EagerEvaluationLogMessage` when the interpolated string is passed to `Rails.logger.debug` as the sole body of an enclosing block such as `each` or `tap`. ([@conwayje][])
+* [#1646](https://github.com/rubocop/rubocop-rails/pull/1646): Fix a false negative for `Rails/ReversibleMigration` when using `remove_index` without a column inside a `change_table` block. ([@ilianah][])
+* [#1642](https://github.com/rubocop/rubocop-rails/pull/1642): Fix a false negative for `Rails/SafeNavigation` when using `try`/`try!` with a symbol to proc such as `foo.try(&:bar)`. ([@koic][])
+* [#1599](https://github.com/rubocop/rubocop-rails/issues/1599): Fix an incorrect autocorrect for `Rails/LinkToBlank` when `Style/TrailingCommaInArguments` with `EnforcedStyleForMultiline: consistent_comma` adds a trailing comma, which produced a duplicate comma. ([@koic][])
+* [#1619](https://github.com/rubocop/rubocop-rails/pull/1619): Fix `MigratedSchemaVersion` setting so it works for all cops. ([@lovro-bikic][])
+
+### Changes
+
+* [#1641](https://github.com/rubocop/rubocop-rails/pull/1641): Fix false negatives in `Rails/SafeNavigation` when using `try`/`try!` with operator methods such as `[]`, `[]=`, and `==`. ([@koic][])
+
 ## 2.35.5 (2026-06-21)
 
 ### Bug fixes
@@ -1452,3 +1464,5 @@
 [@lucasmazza]: https://github.com/lucasmazza
 [@corsonknowles]: https://github.com/corsonknowles
 [@aki77]: https://github.com/aki77
+[@conwayje]: https://github.com/conwayje
+[@ilianah]: https://github.com/ilianah
